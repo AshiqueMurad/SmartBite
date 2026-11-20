@@ -227,37 +227,9 @@ function MealAnalyzer({ onBack }: { onBack: () => void }) {
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [addedToDiary, setAddedToDiary] = useState(false);
-  const [showApiConfig, setShowApiConfig] = useState(false);
-  const [provider, setProvider] = useState<"auto" | "gemini" | "groq" | "openrouter">("auto");
-  const [customApiKey, setCustomApiKey] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-
-  React.useEffect(() => {
-    try {
-      // Keys were renamed from nutrilen_* to smartbite_*. Read the old names once so saved settings survive.
-      const savedProvider = (localStorage.getItem("smartbite_ai_provider") ?? localStorage.getItem("nutrilen_ai_provider")) as any;
-      const savedKey = localStorage.getItem("smartbite_ai_key") ?? localStorage.getItem("nutrilen_ai_key");
-      if (savedProvider) setProvider(savedProvider);
-      if (savedKey) setCustomApiKey(savedKey);
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const saveApiSettings = (newProvider: "auto" | "gemini" | "groq" | "openrouter", newKey: string) => {
-    setProvider(newProvider);
-    setCustomApiKey(newKey);
-    try {
-      localStorage.setItem("smartbite_ai_provider", newProvider);
-      localStorage.setItem("smartbite_ai_key", newKey);
-      localStorage.removeItem("nutrilen_ai_provider");
-      localStorage.removeItem("nutrilen_ai_key");
-    } catch {
-      // ignore
-    }
-  };
 
   // Loading message rotation
   React.useEffect(() => {
@@ -301,9 +273,6 @@ function MealAnalyzer({ onBack }: { onBack: () => void }) {
         body: JSON.stringify({
           image,
           profile: profilePayload(onboardingProfile, targets),
-          ...(provider !== "auto" && customApiKey.trim()
-            ? { provider, apiKey: customApiKey.trim() }
-            : {}),
         }),
       });
       const data = await res.json();
@@ -363,69 +332,12 @@ function MealAnalyzer({ onBack }: { onBack: () => void }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setShowApiConfig((v) => !v)}
           className="rounded-full border-forest/15 text-xs text-forest/70 hover:text-forest"
         >
           <Sparkles className="h-3.5 w-3.5 mr-1.5 text-lime" />
-          {provider === "auto"
-            ? "AI Engine: Free Auto"
-            : `AI Engine: ${provider.toUpperCase()}`}
+          AI Engine: GEMINI
         </Button>
       </div>
-
-      {showApiConfig && (
-        <div className="bg-white rounded-3xl border border-forest/10 p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-forest">Free Vision API Configuration</h3>
-              <p className="text-xs text-forest/55">
-                Works out-of-the-box for free! Optionally plug in your own free-tier API key (Google Gemini, Groq, or OpenRouter) for faster dedicated limits.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowApiConfig(false)}
-              className="text-forest/40 hover:text-forest"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(
-              [
-                { id: "auto", label: "Free Auto (No Key)" },
-                { id: "gemini", label: "Google Gemini (Free)" },
-                { id: "groq", label: "Groq Llama-4 (Free)" },
-                { id: "openrouter", label: "OpenRouter (Free)" },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => saveApiSettings(opt.id, customApiKey)}
-                className={cn(
-                  "px-3 py-2 rounded-xl border text-xs font-semibold transition-all",
-                  provider === opt.id
-                    ? "border-lime bg-lime-soft/40 text-forest"
-                    : "border-forest/10 text-forest/60 hover:border-forest/25"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {provider !== "auto" && (
-            <div className="pt-1">
-              <input
-                type="password"
-                value={customApiKey}
-                onChange={(e) => saveApiSettings(provider, e.target.value)}
-                placeholder={`Paste your free ${provider.toUpperCase()} API key (or set in .env)...`}
-                className="w-full rounded-xl border border-forest/15 bg-cream/20 px-3.5 py-2 text-xs text-forest placeholder:text-forest/40 focus:outline-none focus:border-lime"
-              />
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
         <h2 className="font-heading text-xl font-bold text-forest">
