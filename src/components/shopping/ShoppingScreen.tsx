@@ -177,11 +177,11 @@ export function ShoppingScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userContext: {
-            age: profile?.age || 26,
-            gender: profile?.gender || "male",
-            height: profile?.height || 172,
-            currentWeight: profile?.currentWeight || 68,
-            activityLevel: profile?.activityLevel || "moderate",
+            age: profile?.age,
+            gender: profile?.gender,
+            height: profile?.height,
+            currentWeight: profile?.currentWeight,
+            activityLevel: profile?.activityLevel,
           },
           healthGoal,
           durationDays: finalDays,
