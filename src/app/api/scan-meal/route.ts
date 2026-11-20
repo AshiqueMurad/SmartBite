@@ -458,7 +458,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     // Identity comes from the session. Any userId in the body is ignored.
-    const { image, apiKey: clientApiKey, provider: clientProvider, profile } = body as {
+    const { image, profile } = body as {
       profile?: ProfilePayload | null;
       image?: string;
       apiKey?: string;
@@ -484,127 +484,20 @@ export async function POST(req: NextRequest) {
     const userCtx = await loadUserContext(auth.userId, profile ?? null);
     const systemPrompt = buildSystemPrompt(describeUserContext(userCtx));
 
-    // Local CLIP lookup is only the last resort when no AI key exists on the client or the server.
-    if (!clientApiKey && !hasServerLLMKey()) {
-      const detected = await recognizeFoodsScored(jpegBuffer);
-      if (!detected.length) return NextResponse.json({success:false,error:"No supported food recognized. Try a closer food photo."},{status:422});
-      const clip: any = buildNutritionFromCaption(detected, userCtx);
-      const clipNames: string[] = (clip.ingredients ?? []).map((i: { name: string }) => String(i.name));
-      const clipSourced = await enrichIngredients(clipNames);
-      const clipFit = personalizeMeal(
-        {
-          totalCalories: Number(clip.totalCalories) || 0,
-          protein: Number(clip.protein) || 0,
-          sugar: Number(clip.sugar) || 0,
-          ingredientNames: clipNames,
-          sourced: clipSourced,
-        },
-        userCtx
-      );
-      return NextResponse.json({
-        success: true,
-        result: {
-          ...clip,
-          provider: "SmartBite CLIP",
-          insights: [...clipFit.notes, ...(clip.insights ?? [])],
-          personalization: clipFit,
-          sourcedNutrition: clipSourced,
-        },
-      });
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      return NextResponse.json({ success: false, error: "Food scanning is temporarily unavailable. Please try again later." }, { status: 503 });
     }
-
-    const geminiKey =
-      (clientProvider === "gemini" && clientApiKey) ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_API_KEY;
-    const groqKey =
-      (clientProvider === "groq" && clientApiKey) || process.env.GROQ_API_KEY;
-    const openRouterKey =
-      (clientProvider === "openrouter" && clientApiKey) ||
-      process.env.OPENROUTER_API_KEY;
-
-    let rawContent = "";
-    let usedProvider = "florence2+gpt-oss";
-
-    if (geminiKey) {
-      try {
-        rawContent = await callGeminiVision(jpegBase64, geminiKey, systemPrompt);
-        usedProvider = "gemini";
-      } catch (e) {
-        console.warn("[scan-meal] Gemini failed, trying next provider:", e);
-      }
-    }
-
-    if (!rawContent && groqKey) {
-      try {
-        rawContent = await callGroqVision(jpegDataUrl, groqKey, systemPrompt);
-        usedProvider = "groq";
-      } catch (e) {
-        console.warn("[scan-meal] Groq failed, trying next provider:", e);
-      }
-    }
-
-    if (!rawContent && openRouterKey) {
-      try {
-        rawContent = await callOpenRouterVision(jpegDataUrl, openRouterKey, systemPrompt);
-        usedProvider = "openrouter";
-      } catch (e) {
-        console.warn("[scan-meal] OpenRouter failed, trying next provider:", e);
-      }
-    }
-
-    let visualCaption = "";
-    if (!rawContent) {
-      try {
-        visualCaption = await captionImageWithFlorence2(jpegBuffer);
-        console.log("[scan-meal] Florence-2 Visual Caption:", visualCaption);
-
-        // Immediately reject non-food images (screenshots, websites, documents, etc.)
-        if (visualCaption && !isCaptionFoodRelated(visualCaption)) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: `No food detected in this image. Vision sensor saw: "${visualCaption.slice(0, 140)}". Please upload a clear photo of a meal or food item.`,
-            },
-            { status: 422 }
-          );
-        }
-
-        if (visualCaption) {
-          rawContent = await analyzeCaptionWithFreeLLM(visualCaption, systemPrompt);
-          usedProvider = "florence2+gpt-oss";
-        }
-      } catch (florenceErr) {
-        console.warn("[scan-meal] Florence-2 free vision pipeline unavailable:", florenceErr);
-      }
-    }
-
-    // If all remote services fail, check if API keys are missing
-    if (!rawContent && !visualCaption) {
-      if (!geminiKey && !groqKey && !openRouterKey) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "GEMINI_API_KEY is not configured on the server. Please add GEMINI_API_KEY in your hosting dashboard's Environment Variables.",
-          },
-          { status: 400 }
-        );
-      }
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Could not analyze meal image. Please try uploading a clearer photo.",
-        },
-        { status: 422 }
-      );
+    let rawContent: string;
+    const usedProvider = "gemini";
+    try {
+      rawContent = await callGeminiVision(jpegBase64, geminiKey, systemPrompt);
+    } catch {
+      return NextResponse.json({ success: false, error: "Gemini could not complete this scan. Please try again shortly." }, { status: 503 });
     }
 
     const parsed = parseMealJson(rawContent);
     if (!parsed) {
-      if (visualCaption) {
-        const directResult = buildNutritionFromCaption(captionToLabels(visualCaption), userCtx);
-        return NextResponse.json({ success: true, result: directResult });
-      }
       return NextResponse.json(
         { success: false, error: "Could not parse meal nutrition response. Please try again." },
         { status: 500 }
