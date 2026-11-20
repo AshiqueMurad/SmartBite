@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { aiRateLimit } from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   ensureHistoricalPrices();
@@ -27,6 +28,16 @@ export async function POST(req: NextRequest) {
     const budgetMode = body.budgetMode === "cheapest" || body.budgetMode === "none" ? body.budgetMode : "max";
     const budgetLimitBdt = body.budgetLimitBdt ? Number(body.budgetLimitBdt) : undefined;
 
+    if (budgetMode === "max" && (!Number.isFinite(budgetLimitBdt) || !budgetLimitBdt || budgetLimitBdt <= 0)) {
+      return NextResponse.json({ success: false, error: "Enter a positive total budget in BDT." }, { status: 400 });
+    }
+    const profile = body.userContext;
+    if (!profile || !Number.isFinite(Number(profile.age)) || Number(profile.age) <= 0 ||
+        !Number.isFinite(Number(profile.height)) || Number(profile.height) <= 0 ||
+        !Number.isFinite(Number(profile.currentWeight)) || Number(profile.currentWeight) <= 0 ||
+        !profile.gender || !profile.activityLevel) {
+      return NextResponse.json({ success: false, error: "Complete your age, gender, height, weight and activity level in your profile first." }, { status: 400 });
+    }
     const input: GroceryPlannerInput = {
       // Identity comes from the session. Any userId the client sends is ignored.
       userId: auth.userId,
