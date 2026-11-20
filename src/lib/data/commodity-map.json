@@ -1,0 +1,5 @@
+[
+  { "foodId": "rice_miniket", "patterns": ["^rice\\b.*(medium|miniket)", "^rice$"] },
+  { "foodId": "dal_masoor", "patterns": ["lentil", "masoor"] },
+  { "foodId": "dal_moong", "patterns": ["\\bmung\\b", "\\bmoong\\b"] }
+]

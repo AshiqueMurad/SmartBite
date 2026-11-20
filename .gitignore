@@ -1,0 +1,20 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment and local data
+.env
+.env.*
+!.env.example
+db/
+*.db
+
+# Generated local model files (created by `npm run build` via scripts/prepare-vision.mjs)
+.vision/
+
+# Logs and OS files
+dev.log
+.DS_Store

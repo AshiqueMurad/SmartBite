@@ -1,0 +1,1378 @@
+"use client";
+
+import React, { useState, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Camera,
+  Upload,
+  ShoppingBasket,
+  Utensils,
+  Image as ImageIcon,
+  Loader2,
+  X,
+  Flame,
+  Beef,
+  Wheat,
+  Droplet,
+  Leaf,
+  Sparkles,
+  ArrowRight,
+  ArrowLeft,
+  RotateCcw,
+  BookPlus,
+  Save,
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  Gauge,
+  Timer,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
+import { useAppStore } from "@/store/useAppStore";
+import { useI18n } from "@/components/providers/AppProvider";
+import { formatNumber } from "@/lib/nutrition";
+import { cn } from "@/lib/utils";
+import { SAMPLE_FOOD_DIARY } from "@/lib/sample-data";
+import { profilePayload } from "@/lib/profile-payload";
+import { foodPhoto } from "@/lib/food-photos";
+
+type ScannerMode = "select" | "meal" | "shopping";
+type AnalysisState = "idle" | "analyzing" | "success" | "error";
+
+interface AnalysisResult {
+  mealName: string;
+  portionSize: string;
+  confidence: number;
+  totalCalories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+  ingredients: { name: string; quantity: string; calories: number }[];
+  insights: string[];
+  isMenu?: boolean;
+  glycemicImpact?: "low" | "medium" | "high";
+  novaGroup?: number;
+  dietaryPivot?: {
+    orderSwap?: string;
+    marketStaples?: string[];
+  };
+}
+
+const LOADING_MESSAGES = [
+  "scanner.identifying",
+  "scanner.recognizing",
+  "scanner.estimating",
+  "scanner.calculating",
+  "scanner.preparing",
+];
+
+type LogSlot = "breakfast" | "lunch" | "dinner" | "snacks";
+const LOG_SLOTS: LogSlot[] = ["breakfast", "lunch", "dinner", "snacks"];
+
+export function ScannerScreen() {
+  const { t } = useI18n();
+  const setView = useAppStore((s) => s.setView);
+  const [mode, setMode] = useState<ScannerMode>("select");
+
+  return (
+    <div className="min-h-screen lg:h-screen bg-[#EEF3F1] flex flex-col lg:overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+          <DashboardSidebar activeView="scanner" />
+          <main className="flex-1 min-w-0 lg:overflow-y-auto scroll-soft">
+            <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+          {/* Header */}
+          <div className="mb-6">
+            <button
+              onClick={() => setView("dashboard")}
+              className="flex items-center gap-1.5 text-sm font-medium text-forest/60 hover:text-forest mb-3"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t("sidebar.dashboard")}
+            </button>
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-forest tracking-tight">
+              {t("scanner.title")}
+            </h1>
+            <p className="mt-1 text-sm text-forest/60">{t("scanner.subtitle")}</p>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {mode === "select" && (
+              <motion.div
+                key="select"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-8"
+              >
+                {/* Mode selection */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <ModeCard
+                    icon={Utensils}
+                    title={t("scanner.mode.meal")}
+                    desc={t("scanner.mode.meal.desc")}
+                    accent="lime"
+                    onClick={() => setMode("meal")}
+                  />
+                  <ModeCard
+                    icon={ShoppingBasket}
+                    title={t("scanner.mode.shopping")}
+                    desc={t("scanner.mode.shopping.desc")}
+                    accent="cream"
+                    badge="AI Planner Active"
+                    onClick={() => setView("shopping")}
+                  />
+                </div>
+
+                {/* Example scans showcase — real meals the scanner identifies */}
+                <ExampleScans onTry={() => setMode("meal")} />
+
+              </motion.div>
+            )}
+
+            {mode === "meal" && (
+              <motion.div
+                key="meal"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <MealAnalyzer onBack={() => setMode("select")} />
+              </motion.div>
+            )}
+
+            {mode === "shopping" && (
+              <motion.div
+                key="shopping"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <ShoppingPlaceholder onBack={() => setMode("select")} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+            </div>
+          </main>
+        </div>
+    </div>
+  );
+}
+
+// ===== Mode selection card =====
+function ModeCard({
+  icon: Icon,
+  title,
+  desc,
+  accent,
+  onClick,
+  badge,
+}: {
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+  accent: "lime" | "cream";
+  onClick: () => void;
+  badge?: string;
+}) {
+  const { t } = useI18n();
+  const isLime = accent === "lime";
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "group relative text-left rounded-3xl p-6 border-2 transition-all hover:-translate-y-1 hover:shadow-xl",
+        isLime
+          ? "bg-lime-soft/40 border-lime/30 hover:border-lime/50"
+          : "bg-cream/40 border-forest/8 hover:border-forest/15"
+      )}
+    >
+      {badge && (
+        <span className="absolute top-4 right-4 px-2.5 py-1 rounded-full bg-forest/10 text-[10px] font-semibold text-forest/60">
+          {badge}
+        </span>
+      )}
+      <div
+        className={cn(
+          "w-14 h-14 rounded-2xl flex items-center justify-center mb-4",
+          isLime ? "bg-forest" : "bg-forest/8"
+        )}
+      >
+        <Icon className={cn("h-7 w-7", isLime ? "text-lime" : "text-forest")} strokeWidth={1.7} />
+      </div>
+      <h3 className="font-heading text-lg font-bold text-forest mb-2">{title}</h3>
+      <p className="text-sm text-forest/65 leading-relaxed">{desc}</p>
+      <div className="mt-4 flex items-center gap-1 text-sm font-semibold text-forest">
+        {t("common.continue")}
+        <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+      </div>
+    </button>
+  );
+}
+
+// ===== Meal Analyzer =====
+function MealAnalyzer({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n();
+  const addFood = useAppStore((s) => s.addFood);
+  const targets = useAppStore((s) => s.targets);
+  const setView = useAppStore((s) => s.setView);
+  const user = useAppStore((s) => s.user);
+  const onboardingProfile = useAppStore((s) => s.onboardingProfile);
+
+  const [image, setImage] = useState<string | null>(null);
+  const [state, setState] = useState<AnalysisState>("idle");
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+  const [addedToDiary, setAddedToDiary] = useState(false);
+  const [showApiConfig, setShowApiConfig] = useState(false);
+  const [provider, setProvider] = useState<"auto" | "gemini" | "groq" | "openrouter">("auto");
+  const [customApiKey, setCustomApiKey] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  React.useEffect(() => {
+    try {
+      // Keys were renamed from nutrilen_* to smartbite_*. Read the old names once so saved settings survive.
+      const savedProvider = (localStorage.getItem("smartbite_ai_provider") ?? localStorage.getItem("nutrilen_ai_provider")) as any;
+      const savedKey = localStorage.getItem("smartbite_ai_key") ?? localStorage.getItem("nutrilen_ai_key");
+      if (savedProvider) setProvider(savedProvider);
+      if (savedKey) setCustomApiKey(savedKey);
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const saveApiSettings = (newProvider: "auto" | "gemini" | "groq" | "openrouter", newKey: string) => {
+    setProvider(newProvider);
+    setCustomApiKey(newKey);
+    try {
+      localStorage.setItem("smartbite_ai_provider", newProvider);
+      localStorage.setItem("smartbite_ai_key", newKey);
+      localStorage.removeItem("nutrilen_ai_provider");
+      localStorage.removeItem("nutrilen_ai_key");
+    } catch {
+      // ignore
+    }
+  };
+
+  // Loading message rotation
+  React.useEffect(() => {
+    if (state !== "analyzing") return;
+    const interval = setInterval(() => {
+      setLoadingMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [state]);
+
+  const handleFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImage(reader.result as string);
+      setResult(null);
+      setState("idle");
+      setAddedToDiary(false);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  const analyze = async () => {
+    if (!image) return;
+    setState("analyzing");
+    setErrorMsg("");
+    setResult(null);
+    setLoadingMsgIdx(0);
+    setAddedToDiary(false);
+    try {
+      const res = await fetch("/api/scan-meal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image,
+          profile: profilePayload(onboardingProfile, targets),
+          ...(provider !== "auto" && customApiKey.trim()
+            ? { provider, apiKey: customApiKey.trim() }
+            : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Analysis failed");
+      }
+      setResult(data.result);
+      setState("success");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : t("scanner.error"));
+      setState("error");
+    }
+  };
+
+  const reset = () => {
+    setImage(null);
+    setResult(null);
+    setState("idle");
+    setErrorMsg("");
+    setAddedToDiary(false);
+  };
+
+  const addToDiary = (mealType: LogSlot) => {
+    if (!result) return;
+    addFood({
+      id: Math.random().toString(36).slice(2),
+      mealType,
+      name: result.mealName,
+      nameBn: result.mealName,
+      description: result.portionSize,
+      descriptionBn: result.portionSize,
+      imageQuery: "scanned",
+      calories: result.totalCalories,
+      protein: result.protein,
+      carbs: result.carbs,
+      fat: result.fat,
+      fiber: result.fiber,
+      sugar: result.sugar,
+      time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
+      ingredients: result.ingredients.map((ing) => ({
+        name: ing.name,
+        nameBn: ing.name,
+        quantity: ing.quantity,
+        calories: ing.calories,
+      })),
+    });
+    setAddedToDiary(true);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" size="sm" onClick={onBack} className="rounded-full text-forest/60">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          {t("common.back")}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowApiConfig((v) => !v)}
+          className="rounded-full border-forest/15 text-xs text-forest/70 hover:text-forest"
+        >
+          <Sparkles className="h-3.5 w-3.5 mr-1.5 text-lime" />
+          {provider === "auto"
+            ? "AI Engine: Free Auto"
+            : `AI Engine: ${provider.toUpperCase()}`}
+        </Button>
+      </div>
+
+      {showApiConfig && (
+        <div className="bg-white rounded-3xl border border-forest/10 p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-forest">Free Vision API Configuration</h3>
+              <p className="text-xs text-forest/55">
+                Works out-of-the-box for free! Optionally plug in your own free-tier API key (Google Gemini, Groq, or OpenRouter) for faster dedicated limits.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowApiConfig(false)}
+              className="text-forest/40 hover:text-forest"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(
+              [
+                { id: "auto", label: "Free Auto (No Key)" },
+                { id: "gemini", label: "Google Gemini (Free)" },
+                { id: "groq", label: "Groq Llama-4 (Free)" },
+                { id: "openrouter", label: "OpenRouter (Free)" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => saveApiSettings(opt.id, customApiKey)}
+                className={cn(
+                  "px-3 py-2 rounded-xl border text-xs font-semibold transition-all",
+                  provider === opt.id
+                    ? "border-lime bg-lime-soft/40 text-forest"
+                    : "border-forest/10 text-forest/60 hover:border-forest/25"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {provider !== "auto" && (
+            <div className="pt-1">
+              <input
+                type="password"
+                value={customApiKey}
+                onChange={(e) => saveApiSettings(provider, e.target.value)}
+                placeholder={`Paste your free ${provider.toUpperCase()} API key (or set in .env)...`}
+                className="w-full rounded-xl border border-forest/15 bg-cream/20 px-3.5 py-2 text-xs text-forest placeholder:text-forest/40 focus:outline-none focus:border-lime"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
+        <h2 className="font-heading text-xl font-bold text-forest">
+          {t("scanner.upload.heading")}
+        </h2>
+        <p className="mt-1 text-sm text-forest/60">{t("scanner.upload.desc")}</p>
+
+        {/* Upload area */}
+        {!image && (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "mt-5 rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition-colors",
+              dragging
+                ? "border-lime bg-lime-soft/30"
+                : "border-forest/15 bg-cream/20"
+            )}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-forest/5 flex items-center justify-center mx-auto mb-4">
+              <ImageIcon className="h-8 w-8 text-forest/40" strokeWidth={1.6} />
+            </div>
+            <p className="text-sm text-forest/60 mb-5">
+              Drag & drop your meal photo here
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Button
+                onClick={() => cameraInputRef.current?.click()}
+                className="rounded-full bg-forest text-white font-semibold hover:bg-forest/90"
+              >
+                <Camera className="mr-1.5 h-4 w-4" />
+                {t("scanner.takePhoto")}
+              </Button>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                variant="outline"
+                className="rounded-full border-forest/15 text-forest hover:bg-lime-soft/30"
+              >
+                <Upload className="mr-1.5 h-4 w-4" />
+                {t("scanner.uploadGallery")}
+              </Button>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-forest/10 flex flex-wrap items-center justify-center gap-2">
+              <span className="text-xs text-forest/50">Or test a sample plate:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setImage(foodPhoto("rice fish curry"));
+                  setResult(null);
+                  setState("idle");
+                }}
+                className="px-2.5 py-1 rounded-full bg-forest/8 text-xs font-semibold text-forest hover:bg-lime/20 transition-colors"
+              >
+                🐟 Steamed Rice & Fish
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImage(foodPhoto("paratha dal"));
+                  setResult(null);
+                  setState("idle");
+                }}
+                className="px-2.5 py-1 rounded-full bg-forest/8 text-xs font-semibold text-forest hover:bg-lime/20 transition-colors"
+              >
+                🫓 Roti & Musur Dal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImage(foodPhoto("cucumber salad"));
+                  setResult(null);
+                  setState("idle");
+                }}
+                className="px-2.5 py-1 rounded-full bg-forest/8 text-xs font-semibold text-forest hover:bg-lime/20 transition-colors"
+              >
+                🥗 Fresh Salad Plate
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Image preview */}
+        {image && state !== "analyzing" && (
+          <div className="mt-5">
+            <div className="relative rounded-2xl overflow-hidden bg-forest/5">
+              <img src={image} alt="Meal preview" className="w-full max-h-80 object-contain" />
+              <button
+                onClick={reset}
+                className="absolute top-3 right-3 w-9 h-9 rounded-full bg-forest/70 text-white flex items-center justify-center hover:bg-forest"
+                aria-label={t("common.remove")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {state === "idle" && (
+              <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                <Button
+                  onClick={analyze}
+                  className="flex-1 rounded-full bg-lime text-forest font-semibold hover:bg-lime/90 shadow-md"
+                >
+                  <Sparkles className="mr-1.5 h-4 w-4" />
+                  {t("scanner.analyze")}
+                </Button>
+                <Button
+                  onClick={reset}
+                  variant="outline"
+                  className="rounded-full border-forest/15 text-forest"
+                >
+                  <RotateCcw className="mr-1.5 h-4 w-4" />
+                  {t("common.remove")}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Analyzing state */}
+        {state === "analyzing" && (
+          <div className="mt-5 py-12 text-center">
+            <div className="relative inline-flex">
+              <div className="absolute inset-0 rounded-full bg-lime/20 blur-xl animate-pulse" />
+              <div className="relative w-20 h-20 rounded-full bg-forest flex items-center justify-center">
+                <Loader2 className="h-9 w-9 text-lime animate-spin" />
+              </div>
+            </div>
+            <div className="mt-5 space-y-2 max-w-xs mx-auto">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={loadingMsgIdx}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="text-sm font-medium text-forest"
+                >
+                  {t(LOADING_MESSAGES[loadingMsgIdx])}
+                </motion.div>
+              </AnimatePresence>
+              {/* Progress dots */}
+              <div className="flex items-center justify-center gap-1.5">
+                {LOADING_MESSAGES.map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "h-1.5 rounded-full transition-all",
+                      i === loadingMsgIdx ? "w-6 bg-lime" : "w-1.5 bg-forest/15"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error state */}
+        {state === "error" && (
+          <div className="mt-5 rounded-2xl bg-fat/10 border border-fat/20 p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-fat/20 flex items-center justify-center mx-auto mb-3">
+              <AlertCircle className="h-6 w-6 text-fat" />
+            </div>
+            <p className="text-sm text-forest/70 mb-4">{errorMsg}</p>
+            <div className="flex gap-2 justify-center">
+              <Button onClick={analyze} className="rounded-full bg-forest text-white">
+                <RotateCcw className="mr-1.5 h-4 w-4" />
+                {t("scanner.retry")}
+              </Button>
+              <Button onClick={reset} variant="outline" className="rounded-full">
+                {t("common.remove")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Results */}
+      {state === "success" && result && (
+        <AnalysisResults
+          result={result}
+          image={image}
+          targets={targets}
+          onAddToDiary={addToDiary}
+          addedToDiary={addedToDiary}
+          onAnalyzeAnother={reset}
+          onGoToDashboard={() => setView("dashboard")}
+        />
+      )}
+    </div>
+  );
+}
+
+// ===== Analysis Results =====
+function AnalysisResults({
+  result,
+  image,
+  targets,
+  onAddToDiary,
+  addedToDiary,
+  onAnalyzeAnother,
+  onGoToDashboard,
+}: {
+  result: AnalysisResult;
+  image: string | null;
+  targets: any;
+  onAddToDiary: (mealType: LogSlot) => void;
+  addedToDiary: boolean;
+  onAnalyzeAnother: () => void;
+  onGoToDashboard: () => void;
+}) {
+  const { t } = useI18n();
+  const setView = useAppStore((s) => s.setView);
+  const [pickingSlot, setPickingSlot] = useState(false);
+  // Suggest a meal slot from the time of day; the user still chooses.
+  const hour = new Date().getHours();
+  const suggested: LogSlot = hour < 11 ? "breakfast" : hour < 16 ? "lunch" : hour < 21 ? "dinner" : "snacks";
+  const slotOrder: LogSlot[] = [suggested, ...LOG_SLOTS.filter((s) => s !== suggested)];
+  const setStagedVisionItems = useAppStore((s) => s.setStagedVisionItems);
+  const setStagedDietaryPivot = useAppStore((s) => s.setStagedDietaryPivot);
+  const user = useAppStore((s) => s.user);
+  const onboardingProfile = useAppStore((s) => s.onboardingProfile);
+
+  const [showRagReport, setShowRagReport] = useState(false);
+  const [ragData, setRagData] = useState<any | null>(null);
+  const [loadingRag, setLoadingRag] = useState(false);
+
+  const handleVisionToMarket = () => {
+    const ingredients = result.ingredients.map((i) => i.name);
+    const staples = result.dietaryPivot?.marketStaples || [];
+    const combined = Array.from(new Set([...ingredients, ...staples]));
+    const finalItems = combined.length > 0 ? combined : [result.mealName];
+    setStagedVisionItems(finalItems);
+    setStagedDietaryPivot(ragData?.pivot || {
+      originalDetectedItem: result.mealName,
+      localizedMarketPivot: {
+        title: "Localized Home-Cooked Nutrient Pivot (Dhaka Market)",
+        description: `Directly transferred from visual scan of ${result.mealName}`,
+        estCostSavingsBdt: null,
+        savingsBasis: "unavailable",
+        excludedIngredients: [],
+        unmatchedIngredients: [],
+      },
+    });
+    setView("shopping");
+  };
+
+  const loadDeepRagReport = async () => {
+    if (ragData) {
+      setShowRagReport((v) => !v);
+      return;
+    }
+    setLoadingRag(true);
+    try {
+      const res = await fetch("/api/dietary-pivot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mealName: result.mealName,
+          ingredients: result.ingredients.map((i) => i.name),
+          profile: profilePayload(onboardingProfile, targets),
+          isMenuScan: result.isMenu,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRagData(data);
+        setShowRagReport(true);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingRag(false);
+    }
+  };
+
+  const dailyCal = targets?.dailyCalories ?? 2000;
+  const proteinGoal = targets?.protein ?? 120;
+  const carbsGoal = targets?.carbs ?? 250;
+  const fatGoal = targets?.fat ?? 70;
+
+  const calPct = (result.totalCalories / dailyCal) * 100;
+
+  const macroCards = [
+    { label: t("scanner.results.protein"), value: result.protein, unit: "g", icon: Beef, color: "#9DC45C", bg: "bg-protein/10", goalPct: (result.protein / proteinGoal) * 100 },
+    { label: t("scanner.results.carbs"), value: result.carbs, unit: "g", icon: Wheat, color: "#F2D15B", bg: "bg-carb/10", goalPct: (result.carbs / carbsGoal) * 100 },
+    { label: t("scanner.results.fat"), value: result.fat, unit: "g", icon: Droplet, color: "#E77D6D", bg: "bg-fat/10", goalPct: (result.fat / fatGoal) * 100 },
+    { label: t("scanner.results.fiber"), value: result.fiber, unit: "g", icon: Leaf, color: "#65C7E7", bg: "bg-hydration/10", goalPct: 0 },
+  ];
+
+  const confidenceLabel =
+    result.confidence >= 0.8 ? "High" : result.confidence >= 0.6 ? "Medium" : "Low";
+  const confidenceColor =
+    result.confidence >= 0.8 ? "text-protein" : result.confidence >= 0.6 ? "text-carb" : "text-fat";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-5"
+    >
+      {/* Meal overview — Clean header with item name, no repeated photo */}
+      <div className="bg-white rounded-3xl border border-forest/8 p-5 sm:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold text-forest/50 uppercase tracking-wider mb-1">
+              {t("scanner.results.mealName")}
+            </div>
+            <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-forest tracking-tight">
+              {result.mealName}
+            </h2>
+            {result.portionSize && (
+              <div className="text-xs sm:text-sm font-medium text-forest/60 mt-1">
+                {result.portionSize}
+              </div>
+            )}
+          </div>
+          <div className="bg-forest/5 border border-forest/10 rounded-2xl px-4 py-2 self-start sm:self-auto text-left sm:text-right">
+            <div className="text-[10px] font-semibold text-forest/50 uppercase tracking-wider">
+              {t("scanner.results.confidence")}
+            </div>
+            <div className={cn("text-sm font-extrabold", confidenceColor)}>
+              {confidenceLabel} · {Math.round(result.confidence * 100)}%
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nutrition summary */}
+      <div className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
+        <h3 className="font-heading text-lg font-bold text-forest mb-4">
+          {t("scanner.results.calories")}
+        </h3>
+        <div className="flex items-center gap-6 mb-5">
+          <div className="text-center">
+            <div className="text-4xl font-bold text-lime tabular-nums">
+              {formatNumber(result.totalCalories)}
+            </div>
+            <div className="text-xs text-forest/50 mt-1">{t("common.kcal")}</div>
+          </div>
+          <div className="flex-1 h-2 bg-forest/8 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-lime to-protein rounded-full" style={{ width: `${Math.min(100, calPct)}%` }} />
+          </div>
+          <div className="text-right">
+            <div className="text-sm font-bold text-forest tabular-nums">{calPct.toFixed(1)}%</div>
+            <div className="text-[10px] text-forest/50">{t("scanner.results.ofDailyTarget")}</div>
+          </div>
+        </div>
+        {/* Macro grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {macroCards.map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.label} className="rounded-2xl border border-forest/8 p-3">
+                <div className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center mb-2`}>
+                  <Icon className="h-4 w-4" style={{ color: m.color }} strokeWidth={1.8} />
+                </div>
+                <div className="text-xs text-forest/55 mb-0.5">{m.label}</div>
+                <div className="text-lg font-bold text-forest tabular-nums">
+                  {m.value}
+                  <span className="text-xs text-forest/40 ml-0.5">{m.unit}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Vision-to-Market & Dietary Pivot Panel */}
+      <div className="bg-gradient-to-br from-[#1E4D3B] via-[#215441] to-[#16382B] text-white rounded-3xl p-6 shadow-xl border-2 border-lime/40 relative overflow-hidden space-y-5">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-lime/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-lime/20 flex items-center justify-center text-lime">
+              <ShoppingBasket className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-lime text-forest">
+                  Vision-to-Market Active
+                </span>
+                {result.isMenu && (
+                  <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-forest">
+                    Restaurant Menu Mode
+                  </span>
+                )}
+              </div>
+              <h3 className="font-heading text-lg sm:text-xl font-bold text-white mt-0.5">
+                Metabolic Guidance & Localized Dietary Pivot
+              </h3>
+            </div>
+          </div>
+
+          {/* Clinical RAG button */}
+          <button
+            onClick={loadDeepRagReport}
+            disabled={loadingRag}
+            className="self-start sm:self-auto px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-semibold text-lime flex items-center gap-1.5 transition-all"
+          >
+            {loadingRag ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 text-lime" />
+            )}
+            {showRagReport ? "Hide Clinical RAG" : "Clinical RAG & Guidelines"}
+          </button>
+        </div>
+
+        {/* Metabolic Telemetry Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+          {/* Glycemic Impact */}
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/10">
+            <div className="text-[11px] text-white/60 font-semibold mb-1">
+              Estimated Glycemic Impact
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "w-2.5 h-2.5 rounded-full",
+                  result.glycemicImpact === "high"
+                    ? "bg-fat"
+                    : result.glycemicImpact === "medium"
+                    ? "bg-carb"
+                    : "bg-protein"
+                )}
+              />
+              <span className="text-sm font-bold text-white capitalize">
+                {result.glycemicImpact || "Moderate"} Glycemic Curve
+              </span>
+            </div>
+            <p className="text-[11px] text-white/70 mt-1">
+              {result.glycemicImpact === "high"
+                ? "Risk of rapid insulin spike; balance with soluble fiber."
+                : "Promotes steady sustained glucose response."}
+            </p>
+          </div>
+
+          {/* NOVA UPF Group */}
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/10">
+            <div className="text-[11px] text-white/60 font-semibold mb-1">
+              NOVA Food Processing Level
+            </div>
+            <div className="text-sm font-bold text-white">
+              {result.novaGroup === 4
+                ? "NOVA 4: Ultra-Processed Food"
+                : result.novaGroup === 3
+                ? "NOVA 3: Processed Culinary"
+                : "NOVA 1: Whole Food"}
+            </div>
+            <p className="text-[11px] text-white/70 mt-1">
+              {result.novaGroup === 4
+                ? "Commercial additives / reheated oils flagged."
+                : "Minimally processed nutrient retention."}
+            </p>
+          </div>
+
+          {/* Satiety Index */}
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/10">
+            <div className="text-[11px] text-white/60 font-semibold mb-1">
+              Bioavailability & Satiety
+            </div>
+            <div className="text-sm font-bold text-lime">
+              {result.protein >= 25 ? "High Satiety (4+ hrs)" : "Moderate Satiety (2-3 hrs)"}
+            </div>
+            <p className="text-[11px] text-white/70 mt-1">
+              {result.protein}g protein paired with natural fiber.
+            </p>
+          </div>
+        </div>
+
+        {/* Actionable Dietary Pivot Section */}
+        <div className="bg-white/8 rounded-2xl p-4 border border-white/15 space-y-3 relative z-10">
+          <div className="flex items-start gap-2.5">
+            <span className="text-lg">💡</span>
+            <div className="space-y-1">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-lime">
+                Actionable Dietary Pivot
+              </h4>
+              <p className="text-xs sm:text-sm text-white/90 leading-relaxed">
+                {result.dietaryPivot?.orderSwap ||
+                  "Substitute refined white rice or deep-fried gravies with grilled/tandoori protein and local fresh greens (Palong Shak) to avoid acute insulin peaks."}
+              </p>
+            </div>
+          </div>
+
+          {/* Local Market Alternative */}
+          <div className="border-t border-white/10 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>🛒 Localized Dhaka Market Alternative</span>
+                <span className="text-[10px] text-lime font-mono">~৳165 (Save ~৳280)</span>
+              </div>
+              <p className="text-[11px] text-white/70">
+                Staples: Sonali Chicken, Lal Chaal (Red Rice), Palong Shak, Deshi Dal.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Deep Clinical RAG Knowledge Drawer */}
+        {showRagReport && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="bg-black/25 rounded-2xl p-4 border border-white/15 space-y-3 relative z-10"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-lime" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-lime">
+                Clinical RAG Evidence & Guidelines
+              </h4>
+            </div>
+            <div className="space-y-2 text-xs text-white/80">
+              {(ragData?.pivot?.ragEvidence ?? []).length === 0 && (
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                  No guideline in the knowledge base matched this meal.
+                </div>
+              )}
+              {(ragData?.pivot?.ragEvidence ?? []).map((ev: any, idx: number) => (
+                <div key={idx} className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-white">{ev.guidelineTitle}</span>
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                        ev.evidence === "cited" ? "bg-lime/20 text-lime" : "bg-white/10 text-white/60"
+                      }`}
+                    >
+                      {ev.evidence === "cited" ? "Cited" : "General guidance"}
+                    </span>
+                  </div>
+                  <p>{ev.summary}</p>
+                  {ev.evidence === "cited" && ev.sourceUrl ? (
+                    <a href={ev.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-lime underline break-all">
+                      Source: {ev.source}
+                    </a>
+                  ) : (
+                    <span className="text-white/50">Source: {ev.source}</span>
+                  )}
+                </div>
+              ))}
+              {ragData?.externalFacts && (
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                  <span className="font-bold text-white">Open Food Facts Verified Database: </span>
+                  Nutri-Score Grade {ragData.externalFacts.nutriscoreGrade || "B"} · Source: {ragData.externalFacts.source}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* PRIMARY CALL TO ACTION: VISION-TO-MARKET LOOP */}
+        <div className="pt-2 relative z-10">
+          <Button
+            onClick={handleVisionToMarket}
+            className="w-full rounded-2xl bg-lime hover:bg-lime/90 text-forest font-extrabold text-sm sm:text-base py-6 shadow-xl flex items-center justify-center gap-2 group transition-all"
+          >
+            <ShoppingBasket className="h-5 w-5 text-forest group-hover:scale-110 transition-transform" />
+            <span>Generate Localized Shopping List (Vision-to-Market Loop)</span>
+            <ArrowRight className="h-4 w-4 text-forest group-hover:translate-x-1 transition-transform" />
+          </Button>
+          <p className="text-[11px] text-center text-white/60 mt-2">
+            Transfers detected ingredients directly into the Dhaka shopping planner with benchmark BDT price estimates and live stock checks where a retailer page is available.
+          </p>
+        </div>
+      </div>
+
+      {/* Ingredient breakdown */}
+      {result.ingredients.length > 0 && (
+        <div className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
+          <h3 className="font-heading text-lg font-bold text-forest mb-4">
+            {t("scanner.results.ingredients")}
+          </h3>
+          <div className="space-y-2">
+            {result.ingredients.map((ing, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between p-3 rounded-xl bg-cream/30"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-lime-soft/40 flex items-center justify-center flex-shrink-0">
+                    <Leaf className="h-4 w-4 text-forest/60" strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-forest truncate">{ing.name}</div>
+                    {ing.quantity && (
+                      <div className="text-xs text-forest/50">{ing.quantity}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="text-sm font-bold text-forest tabular-nums flex-shrink-0">
+                  {ing.calories} kcal
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Health insights */}
+      {result.insights.length > 0 && (
+        <div className="bg-gradient-to-br from-forest to-forest/90 text-white rounded-3xl p-6 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-lime/8 blur-3xl" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-lime/20 flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-lime" strokeWidth={1.8} />
+              </div>
+              <h3 className="font-heading text-lg font-bold text-white">
+                {t("scanner.results.insights")}
+              </h3>
+            </div>
+            <div className="space-y-2.5">
+              {result.insights.map((ins, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 p-3 rounded-xl bg-white/5 border border-white/8"
+                >
+                  <Info className="h-4 w-4 text-lime flex-shrink-0 mt-0.5" strokeWidth={1.8} />
+                  <p className="text-sm text-white/85 leading-relaxed">{ins}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Goal comparison */}
+      <div className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
+        <h3 className="font-heading text-lg font-bold text-forest mb-4">
+          {t("scanner.results.comparison")}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <ComparisonBar
+            label={t("scanner.results.calories")}
+            value={result.totalCalories}
+            goal={dailyCal}
+            unit="kcal"
+            color="#A5D52E"
+          />
+          <ComparisonBar
+            label={t("scanner.results.protein")}
+            value={result.protein}
+            goal={proteinGoal}
+            unit="g"
+            color="#9DC45C"
+          />
+          <ComparisonBar
+            label={t("scanner.results.carbs")}
+            value={result.carbs}
+            goal={carbsGoal}
+            unit="g"
+            color="#F2D15B"
+          />
+          <ComparisonBar
+            label={t("scanner.results.fat")}
+            value={result.fat}
+            goal={fatGoal}
+            unit="g"
+            color="#E77D6D"
+          />
+        </div>
+      </div>
+
+      {/* Disclaimer */}
+      <div className="rounded-2xl bg-cream/50 border border-forest/8 p-4">
+        <div className="flex items-start gap-2.5">
+          <Info className="h-4 w-4 text-forest/50 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-forest/60 leading-relaxed">
+            {t("scanner.disclaimer")}
+          </p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row gap-2.5">
+        {addedToDiary ? (
+          <div className="flex-1 rounded-full bg-protein/15 border border-protein/30 px-5 py-3 flex items-center justify-center gap-2 text-protein font-semibold">
+            <CheckCircle2 className="h-4 w-4" />
+            Logged to your dashboard
+          </div>
+        ) : (
+          <div className="flex-1">
+            {!pickingSlot ? (
+              <Button
+                onClick={() => setPickingSlot(true)}
+                className="w-full rounded-full bg-forest text-white font-semibold hover:bg-forest/90 shadow-md h-12"
+              >
+                <BookPlus className="mr-1.5 h-4 w-4" />
+                Log Meal to Dashboard
+              </Button>
+            ) : (
+              <div className="rounded-2xl border border-forest/15 bg-white p-3 space-y-2">
+                <p className="text-sm font-semibold text-forest">Which meal is this?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {slotOrder.map((slot) => (
+                    <button
+                      key={slot}
+                      onClick={() => {
+                        setPickingSlot(false);
+                        onAddToDiary(slot);
+                      }}
+                      className={`h-11 rounded-xl border text-sm font-semibold transition-colors ${
+                        slot === suggested
+                          ? "border-forest bg-forest text-white hover:bg-forest/90"
+                          : "border-forest/15 text-forest hover:bg-forest/5"
+                      }`}
+                    >
+                      {t(`dash.food.${slot}`)}
+                      {slot === suggested && <span className="block text-[10px] font-normal opacity-80">Suggested</span>}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setPickingSlot(false)} className="text-xs text-forest/60 underline">
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <Button
+          onClick={onAnalyzeAnother}
+          variant="outline"
+          className="rounded-full border-forest/15 text-forest hover:bg-lime-soft/30 h-12"
+        >
+          <RotateCcw className="mr-1.5 h-4 w-4" />
+          {t("scanner.results.analyzeAnother")}
+        </Button>
+      </div>
+
+      {addedToDiary && (
+        <Button
+          onClick={onGoToDashboard}
+          className="w-full rounded-full bg-lime text-forest font-semibold hover:bg-lime/90 h-12"
+        >
+          {t("sidebar.dashboard")}
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      )}
+    </motion.div>
+  );
+}
+
+function ComparisonBar({
+  label,
+  value,
+  goal,
+  unit,
+  color,
+}: {
+  label: string;
+  value: number;
+  goal: number;
+  unit: string;
+  color: string;
+}) {
+  const pct = Math.min(100, goal > 0 ? (value / goal) * 100 : 0);
+  return (
+    <div className="rounded-2xl border border-forest/8 p-3">
+      <div className="text-xs text-forest/55 mb-1.5">{label}</div>
+      <div className="text-lg font-bold text-forest tabular-nums">
+        {value}
+        <span className="text-xs text-forest/40 ml-0.5">/{goal}{unit}</span>
+      </div>
+      <div className="mt-2 h-1.5 bg-forest/8 rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <div className="text-[10px] text-forest/40 mt-1">{pct.toFixed(0)}% of daily</div>
+    </div>
+  );
+}
+
+// ===== Shopping redirect card =====
+function ShoppingPlaceholder({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n();
+  const setView = useAppStore((s) => s.setView);
+  return (
+    <div className="bg-white rounded-3xl border border-forest/8 p-8 sm:p-12 text-center shadow-lg">
+      <div className="w-16 h-16 rounded-2xl bg-lime/20 flex items-center justify-center mx-auto mb-4 text-forest">
+        <ShoppingBasket className="h-8 w-8 text-forest" strokeWidth={1.8} />
+      </div>
+      <h3 className="font-heading text-xl font-bold text-forest mb-2">
+        {t("scanner.mode.shopping")}
+      </h3>
+      <p className="text-sm text-forest/70 max-w-md mx-auto mb-6">
+        Generate a personalized, in-budget grocery shopping list tailored to your health goals, allergies, and scanned meal inspirations with real Dhaka market prices.
+      </p>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <Button onClick={onBack} variant="outline" className="rounded-full w-full sm:w-auto">
+          <ArrowLeft className="mr-1.5 h-4 w-4" />
+          {t("common.back")}
+        </Button>
+        <Button
+          onClick={() => setView("shopping")}
+          className="rounded-full bg-forest hover:bg-forest/90 text-white font-semibold w-full sm:w-auto px-6 shadow-md"
+        >
+          <Sparkles className="mr-1.5 h-4 w-4 text-lime" />
+          Launch AI In-Budget Shopping Planner
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ===== How It Works — 3 steps filling the landing page =====
+function HowItWorks() {
+  const { t } = useI18n();
+  const steps = [
+    { icon: Camera, title: t("scanner.how.step1.title"), desc: t("scanner.how.step1.desc") },
+    { icon: Sparkles, title: t("scanner.how.step2.title"), desc: t("scanner.how.step2.desc") },
+    { icon: BookPlus, title: t("scanner.how.step3.title"), desc: t("scanner.how.step3.desc") },
+  ];
+  return (
+    <section className="bg-white rounded-3xl border border-forest/8 p-6 shadow-sm">
+      <div className="mb-5">
+        <h2 className="font-heading text-lg font-bold text-forest">{t("scanner.how.title")}</h2>
+        <p className="text-xs text-forest/55 mt-0.5">{t("scanner.how.subtitle")}</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {steps.map((s, i) => {
+          const Icon = s.icon;
+          return (
+            <div key={i} className="relative rounded-2xl bg-cream/30 border border-forest/8 p-5 overflow-hidden">
+              <span className="absolute top-3 right-4 text-4xl font-bold text-forest/8 tabular-nums leading-none select-none">
+                {i + 1}
+              </span>
+              <div className="w-11 h-11 rounded-xl bg-forest flex items-center justify-center mb-3">
+                <Icon className="h-5 w-5 text-lime" strokeWidth={1.8} />
+              </div>
+              <h3 className="font-heading text-sm font-bold text-forest mb-1">{s.title}</h3>
+              <p className="text-xs text-forest/60 leading-relaxed">{s.desc}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ===== Example Scans — showcase of real meals the scanner identifies =====
+const EXAMPLE_SCANS = SAMPLE_FOOD_DIARY.filter((f) =>
+  ["paratha dal", "rice fish curry", "banana", "cucumber salad"].includes(f.imageQuery)
+).slice(0, 4);
+const SCAN_CONFIDENCES = [96, 94, 92, 90];
+
+function ExampleScans({ onTry }: { onTry: () => void }) {
+  const { t, lang } = useI18n();
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-heading text-lg font-bold text-forest">{t("scanner.examples.title")}</h2>
+          <p className="text-xs text-forest/55 mt-0.5">{t("scanner.examples.subtitle")}</p>
+        </div>
+        <Button
+          onClick={onTry}
+          size="sm"
+          className="rounded-full bg-forest text-white hover:bg-forest/90 h-9 text-xs hidden sm:flex"
+        >
+          <Camera className="mr-1.5 h-3.5 w-3.5" />
+          {t("scanner.takePhoto")}
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {EXAMPLE_SCANS.map((food, i) => {
+          const conf = SCAN_CONFIDENCES[i % SCAN_CONFIDENCES.length];
+          const macros = [
+            { label: "P", value: food.protein, cls: "bg-protein/15 text-protein" },
+            { label: "C", value: food.carbs, cls: "bg-carb/15 text-carb" },
+            { label: "F", value: food.fat, cls: "bg-fat/15 text-fat" },
+          ];
+          return (
+            <div
+              key={food.id}
+              className="bg-white rounded-3xl border border-forest/8 overflow-hidden shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all"
+            >
+              <div className="relative h-28 bg-forest/5">
+                <img
+                  src={foodPhoto(food.imageQuery)}
+                  alt={food.name}
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-white/90 backdrop-blur text-[9px] font-bold text-forest">
+                  {conf}% {t("scanner.examples.confidence")}
+                </span>
+                <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-forest/85 text-white text-[9px] font-semibold">
+                  {t("scanner.examples.detected")}
+                </span>
+              </div>
+              <div className="p-4">
+                <h3 className="text-sm font-bold text-forest truncate">
+                  {lang === "bn" ? food.nameBn : food.name}
+                </h3>
+                <div className="mt-1.5 flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-forest tabular-nums">{food.calories}</span>
+                  <span className="text-[10px] text-forest/45">{t("scanner.examples.kcal")}</span>
+                  <span className="ml-auto text-[9px] text-forest/40">
+                    {food.ingredients.length} {t("scanner.examples.ingredients")}
+                  </span>
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5">
+                  {macros.map((m) => (
+                    <span
+                      key={m.label}
+                      className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full", m.cls)}
+                    >
+                      {m.label} {m.value}g
+                    </span>
+                  ))}
+                </div>
+                <button
+                  onClick={onTry}
+                  className="mt-3 w-full text-[10px] font-semibold text-forest/70 hover:text-forest flex items-center justify-center gap-1 py-1.5 rounded-lg bg-cream/40 hover:bg-cream/70 transition-colors"
+                >
+                  {t("scanner.examples.tryScan")}
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: smartbite
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install --include=dev --legacy-peer-deps && npm run build
+    # Applies the Prisma schema to the Postgres database on every start. Without
+    # --accept-data-loss, a change that would drop data fails the deploy instead of running.
+    startCommand: npx prisma db push && npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set in the Render dashboard (never commit it). Use the connection string from Neon or
+      # Supabase, which includes sslmode=require.
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_MODEL
+        value: "gemini-flash-lite-latest"
+      - key: AUTH_SECRET
+        generateValue: true
+      # Optional: set GEMINI_API_KEY in the dashboard.

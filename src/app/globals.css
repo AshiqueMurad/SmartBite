@@ -1,0 +1,337 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* trigger recompile */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-manrope);
+  --font-bengali: var(--font-noto-bengali);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* SmartBite brand palette */
+  --color-forest: var(--forest);
+  --color-lime: var(--lime);
+  --color-lime-soft: var(--lime-soft);
+  --color-cream: var(--cream);
+  --color-protein: var(--protein);
+  --color-carb: var(--carb);
+  --color-fat: var(--fat);
+  --color-hydration: var(--hydration);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 1rem;
+  /* SmartBite brand palette */
+  --forest: #0B1D16;
+  --lime: #A5D52E;
+  --lime-soft: #D8F0A5;
+  --cream: #F1E7D8;
+  --protein: #9DC45C;
+  --carb: #F2D15B;
+  --fat: #E77D6D;
+  --hydration: #65C7E7;
+
+  --background: #F4F4F5;
+  --foreground: #0B1D16;
+  --card: #FFFFFF;
+  --card-foreground: #0B1D16;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B1D16;
+  --primary: #0B1D16;
+  --primary-foreground: #FFFFFF;
+  --secondary: #D8F0A5;
+  --secondary-foreground: #0B1D16;
+  --muted: #F1E7D8;
+  --muted-foreground: #5C6B5C;
+  --accent: #A5D52E;
+  --accent-foreground: #0B1D16;
+  --destructive: #E77D6D;
+  --border: #E5E7E5;
+  --input: #E5E7E5;
+  --ring: #A5D52E;
+  --chart-1: #9DC45C;
+  --chart-2: #F2D15B;
+  --chart-3: #E77D6D;
+  --chart-4: #65C7E7;
+  --chart-5: #A5D52E;
+  --sidebar: #0B1D16;
+  --sidebar-foreground: #D8F0A5;
+  --sidebar-primary: #A5D52E;
+  --sidebar-primary-foreground: #0B1D16;
+  --sidebar-accent: #14302A;
+  --sidebar-accent-foreground: #D8F0A5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #A5D52E;
+}
+
+.dark {
+  --background: #0B1D16;
+  --foreground: #F1E7D8;
+  --card: #14302A;
+  --card-foreground: #F1E7D8;
+  --popover: #14302A;
+  --popover-foreground: #F1E7D8;
+  --primary: #A5D52E;
+  --primary-foreground: #0B1D16;
+  --secondary: #1F4A3A;
+  --secondary-foreground: #D8F0A5;
+  --muted: #1F4A3A;
+  --muted-foreground: #A8B5A8;
+  --accent: #A5D52E;
+  --accent-foreground: #0B1D16;
+  --destructive: #E77D6D;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #A5D52E;
+  --chart-1: #9DC45C;
+  --chart-2: #F2D15B;
+  --chart-3: #E77D6D;
+  --chart-4: #65C7E7;
+  --chart-5: #A5D52E;
+  --sidebar: #061410;
+  --sidebar-foreground: #D8F0A5;
+  --sidebar-primary: #A5D52E;
+  --sidebar-primary-foreground: #0B1D16;
+  --sidebar-accent: #14302A;
+  --sidebar-accent-foreground: #D8F0A5;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: #A5D52E;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-inter), var(--font-noto-bengali), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-manrope), var(--font-noto-bengali), system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  /* Bengali text uses the Bengali font stack */
+  [lang="bn"], .lang-bn {
+    font-family: var(--font-noto-bengali), var(--font-inter), system-ui, sans-serif;
+  }
+  [lang="bn"] h1, [lang="bn"] h2, [lang="bn"] h3, [lang="bn"] h4, [lang="bn"] h5, [lang="bn"] h6,
+  .lang-bn h1, .lang-bn h2, .lang-bn h3, .lang-bn h4, .lang-bn h5, .lang-bn h6 {
+    font-family: var(--font-noto-bengali), var(--font-manrope), system-ui, sans-serif;
+    letter-spacing: 0;
+  }
+}
+
+/* Subtle float animation for hero cards */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+.animate-float-soft {
+  animation: float-soft 6s ease-in-out infinite;
+}
+.animate-float-soft-delayed {
+  animation: float-soft 7s ease-in-out infinite;
+  animation-delay: -2s;
+}
+.animate-float-soft-slow {
+  animation: float-soft 9s ease-in-out infinite;
+  animation-delay: -4s;
+}
+
+/* Soft custom scrollbar */
+.scroll-soft::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-soft::-webkit-scrollbar-thumb {
+  background: rgba(11, 29, 22, 0.18);
+  border-radius: 9999px;
+}
+.scroll-soft::-webkit-scrollbar-thumb:hover {
+  background: rgba(11, 29, 22, 0.32);
+}
+
+/* Glass card backdrop */
+.glass-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.dark .glass-card {
+  background: rgba(20, 48, 42, 0.85);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ========================================
+   SAGE-GREEN BOTANICAL THEME
+   Medium sage-green #A0B4AC hero with
+   stark white #FFFFFF cards + sharp white
+   transition. Coral #E06D53 CTA accent.
+   Applied to landing + auth screens only.
+   ======================================== */
+
+.culinary-dark {
+  background: #FFFFFF;
+  color: #4A5A55;
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+.culinary-dark h1,
+.culinary-dark h2,
+.culinary-dark h3,
+.culinary-dark h4,
+.culinary-dark h5,
+.culinary-dark h6 {
+  font-family: var(--font-jakarta), var(--font-inter), system-ui, sans-serif;
+  color: #162623;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+/* Sage-green hero background with gentle ambient gradient */
+.culinary-smoky {
+  background:
+    radial-gradient(ellipse 100% 80% at 30% 20%, rgba(255,255,255,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 60% at 80% 80%, rgba(44,94,83,0.10) 0%, transparent 55%),
+    #A0B4AC;
+}
+
+/* Not used but kept for compat */
+.culinary-wood {
+  background: transparent;
+}
+
+/* Crisp solid white surface (pops against sage) */
+.culinary-glass {
+  background: #FFFFFF;
+  border: 1px solid rgba(255,255,255,0.5);
+  box-shadow: 0 4px 24px rgba(22,38,35,0.08);
+}
+
+.culinary-glass-strong {
+  background: #FFFFFF;
+  border: 1px solid rgba(255,255,255,0.5);
+  box-shadow: 0 4px 24px rgba(22,38,35,0.08);
+}
+
+/* Input with sage tint and eucalyptus focus */
+.culinary-input {
+  background: #F4F7F6;
+  border: 1px solid #DCE4E1;
+  color: #162623;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.culinary-input::placeholder {
+  color: #4A5A55;
+}
+.culinary-input:focus {
+  outline: none;
+  background: #FFFFFF;
+  border-color: #2C5E53;
+  box-shadow: 0 0 0 3px rgba(44, 94, 83, 0.15);
+}
+
+/* Solid warm coral CTA button */
+.culinary-btn-solid {
+  background: #E06D53;
+  color: #FFFFFF;
+  font-weight: 700;
+  transition: background 0.2s, transform 0.15s;
+}
+.culinary-btn-solid:hover {
+  background: #C95B42;
+}
+
+/* White secondary button with dark green outline */
+.culinary-btn-glass {
+  background: #FFFFFF;
+  border: 1px solid #2C5E53;
+  color: #2C5E53;
+  transition: background 0.2s;
+}
+.culinary-btn-glass:hover {
+  background: #F4F7F6;
+}
+
+/* Hairline divider */
+.culinary-divider {
+  border-color: #DCE4E1;
+}
+
+/* Scroll-down pill animation */
+@keyframes scroll-pill {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(6px); opacity: 1; }
+}
+.animate-scroll-pill {
+  animation: scroll-pill 2s ease-in-out infinite;
+}
+
+/* Hide Netlify injected HUD / "Powered by Netlify" frame */
+#nl-badge-frame,
+#nl-hud-frame,
+iframe#nl-badge-frame,
+iframe#nl-hud-frame,
+iframe[id*="nl-badge"],
+iframe[id*="nl-hud"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+  bottom: -9999px !important;
+}
